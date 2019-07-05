@@ -4,58 +4,81 @@ import (
 	"time"
 )
 
-type ChannelBuffer struct {
-	Size     int
-	Interval time.Duration
-
-	buffer *[]interface{}
-	timer  *time.Timer
-}
-
+// NewBatch accepts an input channel, buffer size, and flush interval.
+// It creates a ChannelBatch and runs its receive loop in a new goroutine.
 func NewBatch(inputs <-chan interface{}, size int, interval time.Duration) <-chan []interface{} {
-	cb := ChannelBuffer{
+	cb := ChannelBatch{
 		Size:     size,
 		Interval: interval,
 
 		timer:  time.NewTimer(interval),
-		buffer: buffer(),
+		buffer: buffer(size),
 	}
 
 	batches := make(chan []interface{})
 
-	go cb.receive(inputs, batches)
+	go cb.run(inputs, batches)
 
 	return batches
 }
 
-func (cb *ChannelBuffer) Flush(batches chan<- []interface{}) {
+// ChannelBatch stores a fixed-size buffer and a timer
+type ChannelBatch struct {
+	Size     int
+	Interval time.Duration
+
+	buffer []interface{}
+	index  int
+	timer  *time.Timer
+}
+
+// Flush writes a the current buffer slice to the batch output channel.
+// It zeroes the buffer and resets the timer.
+func (cb *ChannelBatch) Flush(batches chan<- []interface{}) {
 	if !cb.Empty() {
-		batches <- *cb.buffer
-		cb.Zero()
+		batches <- cb.Drain()
+
 	}
 
 	cb.timer.Reset(cb.Interval)
 }
 
-func (cb *ChannelBuffer) Zero() {
-	cb.buffer = buffer()
+// Drain returns a slice sized based on the number of buffered items containing the buffered values.
+// It also zeroes the buffer.
+func (cb *ChannelBatch) Drain() []interface{} {
+	result := make([]interface{}, cb.index)
+	for i := 0; i < cb.index; i++ {
+		result[i] = cb.buffer[i]
+	}
+	cb.Zero()
+	return result
 }
 
-func (cb *ChannelBuffer) Empty() bool {
-	return len(*cb.buffer) == 0
+// Zero sets the buffer pointer to a new empty buffer
+func (cb *ChannelBatch) Zero() {
+	cb.buffer = buffer(cb.Size)
+	cb.index = 0
 }
 
-func (cb *ChannelBuffer) Full() bool {
-	return len(*cb.buffer) == cb.Size
+// Empty checks whether the buffer is empty
+func (cb *ChannelBatch) Empty() bool {
+	return cb.index == 0
 }
 
-func (cb *ChannelBuffer) Done(batches chan<- []interface{}) {
+// Full checks whether the buffer is full and needs to be flushed
+func (cb *ChannelBatch) Full() bool {
+	return cb.index == cb.Size
+}
+
+// Done flushes any buffered values and closes the output channel. It also stops the flush timer.
+func (cb *ChannelBatch) Done(batches chan<- []interface{}) {
 	cb.Flush(batches)
 	close(batches)
 	cb.timer.Stop()
 }
 
-func (cb *ChannelBuffer) receive(inputs <-chan interface{}, batches chan<- []interface{}) {
+// run is the processing loop that handles timer expiration and new values on the input channel
+func (cb *ChannelBatch) run(inputs <-chan interface{}, batches chan<- []interface{}) {
 	for {
 		select {
 		case <-cb.timer.C:
@@ -66,8 +89,8 @@ func (cb *ChannelBuffer) receive(inputs <-chan interface{}, batches chan<- []int
 				return
 			}
 
-			buffer := append(*cb.buffer, item)
-			cb.buffer = &buffer
+			cb.buffer[cb.index] = item
+			cb.index++
 
 			if cb.Full() {
 				cb.Flush(batches)
@@ -76,7 +99,6 @@ func (cb *ChannelBuffer) receive(inputs <-chan interface{}, batches chan<- []int
 	}
 }
 
-func buffer() *[]interface{} {
-	b := make([]interface{}, 0)
-	return &b
+func buffer(size int) []interface{} {
+	return make([]interface{}, size)
 }

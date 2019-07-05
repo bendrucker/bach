@@ -20,6 +20,23 @@ func TestNewBatchFullBuffer(t *testing.T) {
 	assert.EqualValues(t, []string{"n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, stringSlice(second))
 }
 
+func TestNewBatchInterval(t *testing.T) {
+	ch := make(chan interface{}, 10)
+	ch <- 1
+	go func() {
+		time.Sleep(time.Duration(200))
+		ch <- 2
+	}()
+
+	batches := NewBatch(ch, 10, time.Duration(100))
+
+	first := <-batches
+	second := <-batches
+
+	assert.Len(t, first, 1)
+	assert.Len(t, second, 1)
+}
+
 func alphabet() <-chan interface{} {
 	length := 26
 

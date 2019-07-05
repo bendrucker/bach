@@ -19,9 +19,9 @@ func ExampleNewBatch() {
 
 	for batch := range batches {
 		fmt.Println(batch)
-		// Output: [1, 2, 3]
 	}
 
+	// Output: [1, 2, 3]
 	// batch is closed when numbers is closed
 }
 

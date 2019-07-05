@@ -58,6 +58,8 @@ func (cb *ChannelBuffer) Done(batches chan<- []interface{}) {
 func (cb *ChannelBuffer) receive(inputs <-chan interface{}, batches chan<- []interface{}) {
 	for {
 		select {
+		case <-cb.timer.C:
+			cb.Flush(batches)
 		case item, ok := <-inputs:
 			if !ok {
 				cb.Done(batches)
@@ -70,8 +72,6 @@ func (cb *ChannelBuffer) receive(inputs <-chan interface{}, batches chan<- []int
 			if cb.Full() {
 				cb.Flush(batches)
 			}
-		case <-cb.timer.C:
-			cb.Flush(batches)
 		}
 	}
 }

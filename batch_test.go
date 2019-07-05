@@ -15,13 +15,14 @@ func ExampleNewBatch() {
 	numbers <- 1
 	numbers <- 2
 	numbers <- 3
+
+	// triggers close of batches channel
 	close(numbers)
 
 	for batch := range batches {
 		fmt.Println(batch)
 	}
 
-	// batch is closed when numbers is closed
 	// Output: [1, 2, 3]
 }
 

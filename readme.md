@@ -17,9 +17,9 @@ func main() {
 	close(numbers)
 
 	for batch := range batches {
-		fmt.Println(batch)
+	fmt.Println(batch)
 	}
 
-  // Output: [1, 2, 3]
+	// Output: [1, 2, 3]
 }
 ```

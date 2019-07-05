@@ -24,7 +24,8 @@ func NewBatch(inputs <-chan interface{}, size int, interval time.Duration) <-cha
 	return batches
 }
 
-// ChannelBatch stores a fixed-size buffer and a timer
+// ChannelBatch stores the state of the channel batching operation.
+// It records configuration (Size and Interval) and maintains the buffer and timer.
 type ChannelBatch struct {
 	Size     int
 	Interval time.Duration

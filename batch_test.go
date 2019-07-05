@@ -10,7 +10,7 @@ import (
 
 func ExampleNewBatch() {
 	numbers := make(chan interface{}, 10)
-	batches := NewBatch(ch, 10, time.Duration(100))
+	batches := NewBatch(numbers, 10, time.Duration(100))
 
 	numbers <- 1
 	numbers <- 2

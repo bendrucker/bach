@@ -35,6 +35,9 @@ func TestNewBatchInterval(t *testing.T) {
 
 	assert.Len(t, first, 1)
 	assert.Len(t, second, 1)
+
+	assert.Equal(t, 1, first[0].(int))
+	assert.Equal(t, 2, second[0].(int))
 }
 
 func alphabet() <-chan interface{} {

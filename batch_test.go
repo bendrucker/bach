@@ -23,7 +23,7 @@ func ExampleNewBatch() {
 		fmt.Println(batch)
 	}
 
-	// Output: [1, 2, 3]
+	// Output: [1 2 3]
 }
 
 func TestNewBatchFullBuffer(t *testing.T) {

@@ -21,8 +21,8 @@ func ExampleNewBatch() {
 		fmt.Println(batch)
 	}
 
-	// Output: [1, 2, 3]
 	// batch is closed when numbers is closed
+	// Output: [1, 2, 3]
 }
 
 func TestNewBatchFullBuffer(t *testing.T) {

@@ -1,11 +1,29 @@
 package bach
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func ExampleNewBatch() {
+	numbers := make(chan interface{}, 10)
+	batches := NewBatch(ch, 10, time.Duration(100))
+
+	numbers <- 1
+	numbers <- 2
+	numbers <- 3
+	close(numbers)
+
+	for batch := range batches {
+		fmt.Println(batch)
+		// Output: [1, 2, 3]
+	}
+
+	// batch is closed when numbers is closed
+}
 
 func TestNewBatchFullBuffer(t *testing.T) {
 	batches := NewBatch(alphabet(), 13, time.Duration(1)*time.Hour)

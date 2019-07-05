@@ -1,11 +1,13 @@
+// Package bach provides configurable batching for messages on a user-supplied channel.
+// It supports both timer and size based batching criteria.
 package bach
 
 import (
 	"time"
 )
 
-// NewBatch accepts an input channel, buffer size, and flush interval.
-// It creates a ChannelBatch and runs its receive loop in a new goroutine.
+// NewBatch creates a batches channel that will receive []interface{} values collected from the inputs channel.
+// It accepts a buffer size and flush interval. It receives from the inputs channel in a new gorotuine.
 func NewBatch(inputs <-chan interface{}, size int, interval time.Duration) <-chan []interface{} {
 	cb := ChannelBatch{
 		Size:     size,

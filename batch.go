@@ -3,7 +3,6 @@
 package bach
 
 import (
-	"sync"
 	"time"
 )
 
@@ -41,8 +40,6 @@ type ChannelBatcher struct {
 
 	batches chan []interface{}
 	buffer  chan interface{}
-	index   int
-	mutex   *sync.RWMutex
 	timer   *time.Timer
 }
 

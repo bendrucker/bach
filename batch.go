@@ -12,8 +12,7 @@ func NewBatcher(inputs <-chan interface{}, limits BatchLimits) *ChannelBatcher {
 	cb := &ChannelBatcher{
 		Limits:  limits,
 		batches: make(chan []interface{}),
-		buffer:  buffer(limits.Size),
-		mutex:   &sync.RWMutex{},
+		buffer:  make(chan interface{}, limits.Size),
 		timer:   time.NewTimer(limits.Age),
 	}
 
@@ -41,7 +40,7 @@ type ChannelBatcher struct {
 	Limits BatchLimits
 
 	batches chan []interface{}
-	buffer  []interface{}
+	buffer  chan interface{}
 	index   int
 	mutex   *sync.RWMutex
 	timer   *time.Timer
@@ -62,9 +61,7 @@ func (cb *ChannelBatcher) Flush() {
 
 // Len returns the current number of entries in the buffer
 func (cb *ChannelBatcher) Len() int {
-	cb.mutex.RLock()
-	defer cb.mutex.RUnlock()
-	return cb.index
+	return len(cb.buffer)
 }
 
 // Drain returns a slice sized based on the number of buffered items containing the buffered values.
@@ -72,23 +69,11 @@ func (cb *ChannelBatcher) Len() int {
 func (cb *ChannelBatcher) drain() []interface{} {
 	result := make([]interface{}, cb.Len())
 
-	cb.mutex.RLock()
-	for i := 0; i < cb.index; i++ {
-		result[i] = cb.buffer[i]
+	for i := 0; i < len(result); i++ {
+		result[i] = <-cb.buffer
 	}
-	cb.mutex.RUnlock()
-
-	cb.zero()
 
 	return result
-}
-
-// zero sets the buffer pointer to a new empty buffer
-func (cb *ChannelBatcher) zero() {
-	cb.mutex.Lock()
-	defer cb.mutex.Unlock()
-	cb.buffer = buffer(cb.Limits.Size)
-	cb.index = 0
 }
 
 // Empty checks whether the buffer is empty
@@ -109,10 +94,7 @@ func (cb *ChannelBatcher) Done() {
 }
 
 func (cb *ChannelBatcher) append(item interface{}) {
-	cb.mutex.Lock()
-	defer cb.mutex.Unlock()
-	cb.buffer[cb.index] = item
-	cb.index++
+	cb.buffer <- item
 }
 
 // run is the processing loop that handles timer expiration and new values on the input channel
@@ -138,8 +120,4 @@ func (cb *ChannelBatcher) run(inputs <-chan interface{}) {
 			}
 		}
 	}
-}
-
-func buffer(size int) []interface{} {
-	return make([]interface{}, size)
 }

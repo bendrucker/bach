@@ -71,6 +71,25 @@ func TestLimitAge(t *testing.T) {
 	<-done
 }
 
+func TestDone(t *testing.T) {
+	// input <- "d" needs a buffer
+	input := make(chan interface{}, 1)
+	batch := NewBatcher(input, BatchLimits{3, time.Duration(1) * time.Hour})
+
+	input <- "a"
+	input <- "b"
+	input <- "c"
+
+	results := <-batch.Results()
+	assert.Equal(t, []string{"a", "b", "c"}, stringSlice(results))
+
+	batch.Done()
+
+	assert.NotPanics(t, func() {
+		input <- "d"
+	})
+}
+
 func alphabet() <-chan interface{} {
 	length := 26
 

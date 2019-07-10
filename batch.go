@@ -12,6 +12,7 @@ func NewBatcher(inputs <-chan interface{}, limits BatchLimits) *ChannelBatcher {
 		Limits:  limits,
 		batches: make(chan []interface{}),
 		buffer:  make(chan interface{}, limits.Size),
+		done:    make(chan struct{}, 1),
 		timer:   time.NewTimer(limits.Age),
 	}
 
@@ -40,7 +41,9 @@ type ChannelBatcher struct {
 
 	batches chan []interface{}
 	buffer  chan interface{}
-	timer   *time.Timer
+	done    chan struct{}
+
+	timer *time.Timer
 }
 
 // Results returns a read-only batch channel that will receive arrays of interfaces (batches)
@@ -85,8 +88,13 @@ func (cb *ChannelBatcher) Full() bool {
 
 // Done flushes any buffered values and closes the output channel. It also stops the flush timer.
 func (cb *ChannelBatcher) Done() {
+	cb.done <- struct{}{}
+
 	cb.Flush()
+
+	close(cb.buffer)
 	close(cb.batches)
+
 	cb.timer.Stop()
 }
 
@@ -98,6 +106,8 @@ func (cb *ChannelBatcher) append(item interface{}) {
 func (cb *ChannelBatcher) run(inputs <-chan interface{}) {
 	for {
 		select {
+		case <-cb.done:
+			return
 		case <-cb.timer.C:
 			cb.Flush()
 		case item, ok := <-inputs:

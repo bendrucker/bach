@@ -9,7 +9,10 @@ import "github.com/bendrucker/bach"
 
 func main() {
 	numbers := make(chan interface{}, 10)
-	batcher := bach.NewBatcher(numbers, 10, time.Duration(100))
+	batcher := bach.NewBatcher(numbers, bach.BatchLimits{
+		Size: 10,
+		Age: time.Duration(100)
+	})
 
 	numbers <- 1
 	numbers <- 2

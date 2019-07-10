@@ -3,100 +3,138 @@
 package bach
 
 import (
+	"sync"
 	"time"
 )
 
-// NewBatch creates a batches channel that will receive []interface{} values collected from the inputs channel.
-// It accepts a buffer size and flush interval. It receives from the inputs channel in a new gorotuine.
-func NewBatch(inputs <-chan interface{}, size int, interval time.Duration) <-chan []interface{} {
-	cb := ChannelBatch{
-		Size:     size,
-		Interval: interval,
-
-		timer:  time.NewTimer(interval),
-		buffer: buffer(size),
+// NewBatcher initializes a new ChannelBatcher and begins reading from the inputs channel
+func NewBatcher(inputs <-chan interface{}, limits BatchLimits) *ChannelBatcher {
+	cb := &ChannelBatcher{
+		Limits:  limits,
+		batches: make(chan []interface{}),
+		buffer:  buffer(limits.Size),
+		mutex:   &sync.RWMutex{},
+		timer:   time.NewTimer(limits.Age),
 	}
 
-	batches := make(chan []interface{})
+	cb.timer.Stop()
+	go cb.run(inputs)
 
-	go cb.run(inputs, batches)
-
-	return batches
+	return cb
 }
 
-// ChannelBatch stores the state of the channel batching operation.
-// It records configuration (Size and Interval) and maintains the buffer and timer.
-type ChannelBatch struct {
-	Size     int
-	Interval time.Duration
+// BatchLimits configures limits for the contents of a batch
+// When limits are reached, a batch will be flushed
+type BatchLimits struct {
+	// Size is the maximum size of a batch. When the buffer reaches Size, a batch
+	// will be flushed.
+	Size int
 
-	buffer []interface{}
-	index  int
-	timer  *time.Timer
+	// Age is the maximum age (a Duration) of an entry in a batch. When the first
+	// entry in the buffer reaches Age, a batch will be flushed.
+	Age time.Duration
+}
+
+// ChannelBatcher stores the state of the channel batching operation.
+// It records configuration (Size and Interval) and maintains the buffer and timer.
+type ChannelBatcher struct {
+	Limits BatchLimits
+
+	batches chan []interface{}
+	buffer  []interface{}
+	index   int
+	mutex   *sync.RWMutex
+	timer   *time.Timer
+}
+
+// Results returns a read-only batch channel that will receive arrays of interfaces (batches)
+func (cb *ChannelBatcher) Results() <-chan []interface{} {
+	return cb.batches
 }
 
 // Flush writes a the current buffer slice to the batch output channel.
 // It zeroes the buffer and resets the timer.
-func (cb *ChannelBatch) Flush(batches chan<- []interface{}) {
+func (cb *ChannelBatcher) Flush() {
 	if !cb.Empty() {
-		batches <- cb.Drain()
-
+		cb.batches <- cb.drain()
 	}
+}
 
-	cb.timer.Reset(cb.Interval)
+// Len returns the current number of entries in the buffer
+func (cb *ChannelBatcher) Len() int {
+	cb.mutex.RLock()
+	defer cb.mutex.RUnlock()
+	return cb.index
 }
 
 // Drain returns a slice sized based on the number of buffered items containing the buffered values.
 // It also zeroes the buffer.
-func (cb *ChannelBatch) Drain() []interface{} {
-	result := make([]interface{}, cb.index)
+func (cb *ChannelBatcher) drain() []interface{} {
+	result := make([]interface{}, cb.Len())
+
+	cb.mutex.RLock()
 	for i := 0; i < cb.index; i++ {
 		result[i] = cb.buffer[i]
 	}
-	cb.Zero()
+	cb.mutex.RUnlock()
+
+	cb.zero()
+
 	return result
 }
 
-// Zero sets the buffer pointer to a new empty buffer
-func (cb *ChannelBatch) Zero() {
-	cb.buffer = buffer(cb.Size)
+// zero sets the buffer pointer to a new empty buffer
+func (cb *ChannelBatcher) zero() {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+	cb.buffer = buffer(cb.Limits.Size)
 	cb.index = 0
 }
 
 // Empty checks whether the buffer is empty
-func (cb *ChannelBatch) Empty() bool {
-	return cb.index == 0
+func (cb *ChannelBatcher) Empty() bool {
+	return cb.Len() == 0
 }
 
 // Full checks whether the buffer is full and needs to be flushed
-func (cb *ChannelBatch) Full() bool {
-	return cb.index == cb.Size
+func (cb *ChannelBatcher) Full() bool {
+	return cb.Len() == cb.Limits.Size
 }
 
 // Done flushes any buffered values and closes the output channel. It also stops the flush timer.
-func (cb *ChannelBatch) Done(batches chan<- []interface{}) {
-	cb.Flush(batches)
-	close(batches)
+func (cb *ChannelBatcher) Done() {
+	cb.Flush()
+	close(cb.batches)
 	cb.timer.Stop()
 }
 
+func (cb *ChannelBatcher) append(item interface{}) {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+	cb.buffer[cb.index] = item
+	cb.index++
+}
+
 // run is the processing loop that handles timer expiration and new values on the input channel
-func (cb *ChannelBatch) run(inputs <-chan interface{}, batches chan<- []interface{}) {
+func (cb *ChannelBatcher) run(inputs <-chan interface{}) {
 	for {
 		select {
 		case <-cb.timer.C:
-			cb.Flush(batches)
+			cb.Flush()
 		case item, ok := <-inputs:
 			if !ok {
-				cb.Done(batches)
+				cb.Done()
 				return
 			}
 
-			cb.buffer[cb.index] = item
-			cb.index++
+			if cb.Empty() {
+				cb.timer.Reset(cb.Limits.Age)
+			}
+
+			cb.append(item)
 
 			if cb.Full() {
-				cb.Flush(batches)
+				cb.Flush()
 			}
 		}
 	}

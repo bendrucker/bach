@@ -9,15 +9,15 @@ import "github.com/bendrucker/bach"
 
 func main() {
 	numbers := make(chan interface{}, 10)
-	batches := bach.NewBatch(numbers, 10, time.Duration(100))
+	batcher := bach.NewBatcher(numbers, 10, time.Duration(100))
 
 	numbers <- 1
 	numbers <- 2
 	numbers <- 3
 	close(numbers)
 
-	for batch := range batches {
-	fmt.Println(batch)
+	for batch := range batcher.Results() {
+		fmt.Println(batch)
 	}
 
 	// Output: [1 2 3]

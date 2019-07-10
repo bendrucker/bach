@@ -8,29 +8,29 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func ExampleNewBatch() {
+func ExampleNewBatcher() {
 	numbers := make(chan interface{}, 10)
-	batches := NewBatch(numbers, 10, time.Duration(100))
+	batcher := NewBatcher(numbers, BatchLimits{10, time.Duration(100)})
 
 	numbers <- 1
 	numbers <- 2
 	numbers <- 3
 
-	// triggers close of batches channel
+	// triggers close of batcher channel
 	close(numbers)
 
-	for batch := range batches {
+	for batch := range batcher.Results() {
 		fmt.Println(batch)
 	}
 
 	// Output: [1 2 3]
 }
 
-func TestNewBatchFullBuffer(t *testing.T) {
-	batches := NewBatch(alphabet(), 13, time.Duration(1)*time.Hour)
+func TestLimitSize(t *testing.T) {
+	batch := NewBatcher(alphabet(), BatchLimits{13, time.Duration(1) * time.Hour})
 
-	first := <-batches
-	second := <-batches
+	first := <-batch.Results()
+	second := <-batch.Results()
 
 	assert.Len(t, first, 13)
 	assert.Len(t, second, 13)
@@ -39,24 +39,36 @@ func TestNewBatchFullBuffer(t *testing.T) {
 	assert.EqualValues(t, []string{"n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, stringSlice(second))
 }
 
-func TestNewBatchInterval(t *testing.T) {
+func TestLimitAge(t *testing.T) {
 	ch := make(chan interface{}, 10)
+	batcher := NewBatcher(ch, BatchLimits{10, time.Duration(20) * time.Millisecond})
+	done := make(chan bool, 1)
+
 	ch <- 1
 	go func() {
-		time.Sleep(time.Duration(200))
+		// sleep 1.5x age limit to allow flush
+		time.Sleep(time.Duration(30) * time.Millisecond)
+		assert.Equal(t, 0, batcher.Len())
+
+		// sleep < age limit
+		// verify that timer began on receipt of 2, not on flush of 1
 		ch <- 2
+		time.Sleep(time.Duration(5) * time.Millisecond)
+		assert.Equal(t, 1, batcher.Len())
+
+		done <- true
 	}()
 
-	batches := NewBatch(ch, 10, time.Duration(100))
-
-	first := <-batches
-	second := <-batches
+	first := <-batcher.Results()
+	second := <-batcher.Results()
 
 	assert.Len(t, first, 1)
 	assert.Len(t, second, 1)
 
 	assert.Equal(t, 1, first[0].(int))
 	assert.Equal(t, 2, second[0].(int))
+
+	<-done
 }
 
 func alphabet() <-chan interface{} {
